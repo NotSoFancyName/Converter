@@ -1,0 +1,29 @@
+version: "3.7"
+
+services:
+  converter:
+    build:
+      context: . 
+      dockerfile: ./docker/converter/Dockerfile
+    container_name: converter
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    depends_on:
+      - "db"
+  fetcher:
+    build:
+      context: . 
+      dockerfile: ./docker/fetcher/Dockerfile
+    container_name: fetcher
+    restart: unless-stopped
+    depends_on:
+      - "db"
+  db:
+    image: postgres
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+        POSTGRES_PASSWORD: pwadmin
+        POSTGRES_USER: postgres
+        POSTGRES_DB: converter-db
