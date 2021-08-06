@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option go_package = "github.com/NotSoFancyName/conversion_service/proto";
+
+service CurrencyFetcher {
+    rpc GetRatios(GetRatiosRequest) returns (GetRatiosResponse) {}
+}
+
+message GetRatiosRequest {}
+
+message GetRatiosResponse {
+    message Ratio {
+        string currency = 1;
+        float ratio = 2;
+    }
+    repeated Ratio ratios = 1;
+}

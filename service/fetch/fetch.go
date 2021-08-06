@@ -7,18 +7,16 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
+	"github.com/NotSoFancyName/conversion_service/proto"
 	"github.com/NotSoFancyName/conversion_service/service/currency_manager"
 	"github.com/NotSoFancyName/conversion_service/service/currency_manager/model"
 )
 
 const (
-	currencyURL = "http://api.currencylayer.com/live"
-	apiKey      = "ac1dcc2f8f5173e6d44771e0a7e9bc8f"
-
-	baseCurrency = "USD"
+	currencyURL = "http://data.fixer.io/api/latest"
+	apiKey      = "952f801a75a9b0804404ba83aad959fb"
 )
 
 type Fetcher struct {
@@ -26,6 +24,8 @@ type Fetcher struct {
 	client      *http.Client
 	url         *url.URL
 	cm          currency_manager.Manager
+
+	proto.UnimplementedCurrencyFetcherServer
 }
 
 func NewFetcher(period time.Duration) (*Fetcher, error) {
@@ -35,7 +35,6 @@ func NewFetcher(period time.Duration) (*Fetcher, error) {
 	}
 	q := u.Query()
 	q.Set("access_key", apiKey)
-	q.Set("currencies", model.AllCurrenciesTypesString())
 	u.RawQuery = q.Encode()
 
 	cm, err := currency_manager.NewManagerOfType(currency_manager.PostgresManager)
@@ -51,9 +50,10 @@ func NewFetcher(period time.Duration) (*Fetcher, error) {
 	}, nil
 }
 
-func (f *Fetcher) Run(stop chan struct{}) {
+func (f *Fetcher) RunFetcher(stop chan struct{}) {
 	ticker := time.NewTicker(f.fetchPeriod)
 	defer ticker.Stop()
+	defer f.cm.Shutdown()
 
 	log.Println("Making initial fetch")
 	entries, err := f.fetch()
@@ -72,14 +72,14 @@ func (f *Fetcher) Run(stop chan struct{}) {
 			stop <- struct{}{}
 			return
 		case <-ticker.C:
-			log.Println("Trying to fetch currency exachange rates")
+			log.Println("Fetching currency exachange rates")
 			entries, err = f.fetch()
 			if err != nil {
-				log.Printf("failed to fetch exchange rates: %v\n", err)
+				log.Printf("Failed to fetch exchange rates: %v\n", err)
 			}
 			err = f.cm.SaveCurrencies(entries)
 			if err != nil {
-				log.Printf("failed to save exchange rates: %v\n", err)
+				log.Printf("Failed to save exchange rates: %v\n", err)
 			}
 		}
 	}
@@ -95,7 +95,7 @@ func (f *Fetcher) fetch() ([]*model.CurrencyEntry, error) {
 	var currencyRatios struct {
 		Status bool               `json:"success"`
 		Source string             `json:"source"`
-		Quotes map[string]float64 `json:"quotes"`
+		Quotes map[string]float64 `json:"rates"`
 	}
 
 	err = json.NewDecoder(resp.Body).Decode(&currencyRatios)
@@ -109,10 +109,9 @@ func (f *Fetcher) fetch() ([]*model.CurrencyEntry, error) {
 
 	var entries []*model.CurrencyEntry
 	for k, v := range currencyRatios.Quotes {
-		cur := strings.TrimPrefix(k, baseCurrency)
 		entries = append(entries,
 			&model.CurrencyEntry{
-				Type:  model.CurrencyType(cur),
+				Type:  model.CurrencyType(k),
 				Ratio: v,
 			},
 		)

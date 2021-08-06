@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/NotSoFancyName/conversion_service/service/currency_manager"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -21,23 +21,24 @@ const (
 
 type Server struct {
 	server *http.Server
-	cm     currency_manager.Manager
+	cc     *grpc.ClientConn
 	stop   chan struct{}
 }
 
-func NewServer(stop chan struct{}, port int) (*Server, error) {
-	cm, err := currency_manager.NewManagerOfType(currency_manager.PostgresManager)
+func NewServer(stop chan struct{}, listenPort int, fetcherAddress string) (*Server, error) {
+	conn, err := grpc.Dial(fetcherAddress, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
-		return nil, fmt.Errorf("failed to create currency manager: %v", err)
+		return nil, fmt.Errorf("failed to connect to fetcher service: %v", err)
 	}
+
 	s := &Server{
 		server: &http.Server{
-			Addr:           ":" + strconv.FormatInt(int64(port), 10),
+			Addr:           ":" + strconv.FormatInt(int64(listenPort), 10),
 			ReadTimeout:    readTimeout,
 			WriteTimeout:   writeTimeout,
 			MaxHeaderBytes: maxHeaderBytes,
 		},
-		cm:   cm,
+		cc:   conn,
 		stop: stop,
 	}
 	s.server.Handler = http.HandlerFunc(s.handleGetCurrenciesExchangeRate)
@@ -51,8 +52,8 @@ func (s *Server) Run(errs chan<- error) {
 		if err := s.server.Shutdown(context.Background()); err != nil {
 			log.Printf("Failed to shutdown server properly: %v", err)
 		}
-		if err := s.cm.Shutdown(); err != nil {
-			log.Printf("Failed to shutdown DB properly: %v", err)
+		if err := s.cc.Close(); err != nil {
+			log.Printf("Failed to close gRPC connection: %v", err)
 		}
 		log.Println("Server is shut")
 		s.stop <- struct{}{}

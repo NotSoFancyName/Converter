@@ -11,6 +11,7 @@ import (
 )
 
 var port = flag.Int("p", 8081, "listen port number")
+var fetcherAddress = flag.String("a", "fetcher:8082", "fetcher service address")
 
 func main() {
 	done := make(chan os.Signal, 1)
@@ -19,10 +20,11 @@ func main() {
 	errs := make(chan error)
 	stop := make(chan struct{})
 
-	srv, err := rest.NewServer(stop, *port)
+	srv, err := rest.NewServer(stop, *port, *fetcherAddress)
 	if err != nil {
 		log.Fatalf("Failed to initialize converter server: %v", err)
 	}
+
 	go srv.Run(errs)
 	select {
 	case err := <-errs:

@@ -41,18 +41,24 @@ func NewPostgreManager() *PostgreManager {
 }
 
 type Currency struct {
-	gorm.Model
+	ID        uint `gorm:"primarykey"`
+	CreatedAt time.Time
+
 	Type  string
 	Ratio float64
 }
 
 func (m *PostgreManager) GetCurrencies() ([]*model.CurrencyEntry, error) {
+	var t time.Time
+	err := m.db.Table("currencies").Select("max(created_at)").Row().Scan(&t)
+	if err != nil {
+		return nil, err
+	}
 	var cur []Currency
-	m.db.Limit(len(model.AllCurrenciesTypes)).Order("created_at desc").Find(&cur)
+	m.db.Where("created_at = ?", t).Find(&cur)
 	if len(cur) == 0 {
 		return nil, errors.New("the database does not contain currency rates yet")
 	}
-
 	var res []*model.CurrencyEntry
 	for _, v := range cur {
 		res = append(res, &model.CurrencyEntry{
@@ -65,11 +71,13 @@ func (m *PostgreManager) GetCurrencies() ([]*model.CurrencyEntry, error) {
 
 func (m *PostgreManager) SaveCurrencies(entries []*model.CurrencyEntry) error {
 	var currencies []Currency
+	ct := time.Now()
 	for _, v := range entries {
 		currencies = append(currencies,
 			Currency{
-				Type:  string(v.Type),
-				Ratio: v.Ratio,
+				Type:      string(v.Type),
+				Ratio:     v.Ratio,
+				CreatedAt: ct,
 			},
 		)
 	}
